@@ -1,4 +1,6 @@
+#pragma once
 #include "GameScene.h"
+#include "GameFinishScene.h"
 #include "Ball.h"
 #include "Functions.h"
 #include "EntityContactListener.h"
@@ -17,7 +19,11 @@ Vector<SpriteFrame *> background_frames;
 
 RepeatForever *background_animation;
 
+Label *blocks_label, *blocks_value_label;
+
 unsigned int playing_effect = 0;
+
+int blocksLeft = 0;
 
 Scene* GameScene::createScene()
 {
@@ -68,6 +74,17 @@ bool GameScene::init()
 	_eventDispatcher->addEventListenerWithSceneGraphPriority(listener, this);
 	_touchListener = listener;
 
+	auto key_listener = EventListenerKeyboard::create();
+	key_listener->onKeyPressed = [&](EventKeyboard::KeyCode keyCode, Event* event) {
+		switch (keyCode) {
+		case EventKeyboard::KeyCode::KEY_R:
+			Director::getInstance()->replaceScene(TransitionFade::create(0.5, GameScene::createScene(), Color3B(0, 255, 255)));
+			break;
+		}
+	};
+
+	_eventDispatcher->addEventListenerWithSceneGraphPriority(key_listener, this);
+
 	Size visibleSize = Director::getInstance()->getVisibleSize();
 	Vec2 origin = Director::getInstance()->getVisibleOrigin();
 
@@ -111,13 +128,13 @@ bool GameScene::init()
 	screenBorderShape.Set(upperLeftCorner, lowerLeftCorner);
 	_groundBody->CreateFixture(&screenBorderShape, 0);
 
-	ball = Ball::create(Vec2(100, 100));
+	ball = Ball::create(Vec2(50, 50));
 	ball->setTag(1);
 	background->addChild(ball);
 
 	b2BodyDef ballBodyDef;
 	ballBodyDef.type = b2_dynamicBody;
-	ballBodyDef.position.Set(100 / PTM_RATIO, 100 / PTM_RATIO);
+	ballBodyDef.position.Set(50 / PTM_RATIO, 50 / PTM_RATIO);
 	ballBodyDef.userData = ball;
 
 	b2Body *ballBody = _world->CreateBody(&ballBodyDef);
@@ -176,6 +193,8 @@ bool GameScene::init()
 	_contactListener = new EntityContactListener();
 	_world->SetContactListener(_contactListener);
 
+
+	blocksLeft = 0;
 	for (int i = 0; i < 6; i++) {
 		for (int j = 0; j < 4; j++) {
 			Sprite *block = Sprite::createWithSpriteFrameName("block.png");
@@ -205,12 +224,24 @@ bool GameScene::init()
 			blockShapeDef.friction = 0.0;
 			blockShapeDef.restitution = 0.1f;
 			blockBody->CreateFixture(&blockShapeDef);
+
+			blocksLeft++;
 		}
 	}
 
 	this->schedule(schedule_selector(GameScene::tick));
 
-	cocos2d::experimental::AudioEngine::play2d("background.mp3", true, 0.2);
+	blocks_label = Label::createWithSystemFont("Blocks Left: ", "Calibri", 23);
+	blocks_value_label = Label::createWithSystemFont(std::to_string(blocksLeft), "Calibri", 23);
+	blocks_label->setAnchorPoint(Vec2(0, 0));
+	blocks_value_label->setAnchorPoint(Vec2(0, 0));
+	blocks_label->setPosition(10, 10);
+	blocks_value_label->setPosition(10 + blocks_label->getBoundingBox().getMaxX(), 10);	
+	background->addChild(blocks_label, 5);
+	background->addChild(blocks_value_label, 5);
+
+	cocos2d::experimental::AudioEngine::stopAll();
+	cocos2d::experimental::AudioEngine::play2d("background.mp3", true, 1);
 
 	return true;
 }
@@ -266,10 +297,9 @@ void GameScene::tick(float dt)
 		}
 		if ((contact.fixtureA == _bottomFixture && contact.fixtureB == _ballFixture) ||
 			(contact.fixtureA == _ballFixture && contact.fixtureB == _bottomFixture)) {
-			//GameOverScene *gameOverScene = GameOverScene::create();
-			//gameOverScene->getLayer()->getLabel()->setString("You Lose! :[");
-			//CCDirector::getInstance()->replaceScene(gameOverScene);
-			Director::getInstance()->pause();
+			CocosDenshion::SimpleAudioEngine::getInstance()->stopAllEffects();
+			cocos2d::experimental::AudioEngine::stopAll();
+			Director::getInstance()->replaceScene(TransitionFade::create(0.25, GameFinishScene::createGameOverScene(), Color3B(255, 255, 255)));
 		}
 
 		b2Body *bodyA = contact.fixtureA->GetBody();
@@ -303,21 +333,21 @@ void GameScene::tick(float dt)
 		if (body->GetUserData() != NULL) {
 			Sprite *sprite = (Sprite *)body->GetUserData();
 			background->removeChild(sprite, true);
+			blocksLeft--;
+			blocks_value_label->setString(std::to_string(blocksLeft));
 		}
 		_world->DestroyBody(body);
 	}
 
 	if (!blockFound)
 	{
-		Director::getInstance()->pause();
-		//GameOverScene *gameOverScene = GameOverScene::create();
-		//gameOverScene->getLayer()->getLabel()->setString("You Win!");
-		//Director::getInstance()->replaceScene(gameOverScene);
+		CocosDenshion::SimpleAudioEngine::getInstance()->stopAllEffects();
+		cocos2d::experimental::AudioEngine::stopAll();
+		Director::getInstance()->replaceScene(TransitionFade::create(0.25, GameFinishScene::createWinScene(), Color3B(0, 0, 0)));
 	}
 
 	if (toDestroy.size() > 0)
 	{
-		// SimpleAudioEngine::getInstance()->playEffect("blip.caf");
 		if (playing_effect != 0) {
 			CocosDenshion::SimpleAudioEngine::getInstance()->stopEffect(playing_effect);
 			playing_effect = CocosDenshion::SimpleAudioEngine::getInstance()->playEffect("hit.wav");

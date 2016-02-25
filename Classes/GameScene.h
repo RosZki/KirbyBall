@@ -26,4 +26,5 @@ private:
 	b2MouseJoint *_mouseJoint;
 
 	EntityContactListener *_contactListener;
+
 };
